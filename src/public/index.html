@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Record API Dev UI</title>
+  <style>
+    body { font-family: system-ui; margin: 1rem; max-width: 640px; }
+    input, textarea, button { font-size: 1rem; }
+    #error { color: red; margin: 0.5rem 0; }
+    #records { list-style: none; padding: 0; }
+    #records li { padding: 0.5rem; margin: 0.25rem 0; background: #f0f0f0; cursor: pointer; border-radius: 4px; }
+    #records li:hover { background: #e0e0e0; }
+    #records li.selected { background: #cce; }
+    textarea { width: 100%; min-height: 120px; box-sizing: border-box; }
+    .row { margin: 0.5rem 0; }
+  </style>
+</head>
+<body>
+  <h1>Record API Dev UI</h1>
+  <div class="row">
+    <label>ownerUserId</label>
+    <input id="ownerUserId" type="text" value="cmllijj4m0000k4gpi37dxe9v" style="width: 100%;">
+  </div>
+  <div class="row">
+    <button id="loadBtn">Load Records</button>
+  </div>
+  <div id="error"></div>
+  <div class="row">
+    <label>Records</label>
+    <ul id="records"></ul>
+  </div>
+  <div class="row">
+    <label>Content (current version)</label>
+    <textarea id="contentText" placeholder="Select a record"></textarea>
+  </div>
+  <div class="row">
+    <button id="saveBtn">Save New Version</button>
+  </div>
+
+  <script>
+    const ownerInput = document.getElementById("ownerUserId");
+    const loadBtn = document.getElementById("loadBtn");
+    const recordsList = document.getElementById("records");
+    const contentText = document.getElementById("contentText");
+    const saveBtn = document.getElementById("saveBtn");
+    const errorEl = document.getElementById("error");
+
+    let records = [];
+    let selectedRecordId = null;
+
+    function showError(msg) {
+      errorEl.textContent = msg || "";
+    }
+
+    async function loadRecords() {
+      showError("");
+      const ownerUserId = ownerInput.value.trim();
+      if (!ownerUserId) {
+        showError("ownerUserId is required");
+        return;
+      }
+      try {
+        const r = await fetch(`/records?ownerUserId=${encodeURIComponent(ownerUserId)}`);
+        const data = await r.json();
+        if (!r.ok) {
+          showError(data.error || `HTTP ${r.status}`);
+          return;
+        }
+        records = data.records || [];
+      } catch (e) {
+        showError(e.message || "Request failed");
+        return;
+      }
+      renderRecords();
+      if (!records.find(r => r.id === selectedRecordId)) {
+        selectedRecordId = null;
+        contentText.value = "";
+      } else {
+        loadRecord(selectedRecordId);
+      }
+    }
+
+    function esc(s) {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function renderRecords() {
+      recordsList.innerHTML = records.map(r => {
+        const cv = r.currentVersion || {};
+        const preview = esc((cv.contentText || "").slice(0, 60));
+        return `<li data-id="${esc(r.id)}" class="${r.id === selectedRecordId ? "selected" : ""}">${esc(r.id)} · v${cv.versionNumber ?? "?"} · ${preview}${(cv.contentText || "").length >= 60 ? "…" : ""}</li>`;
+      }).join("");
+      recordsList.querySelectorAll("li").forEach(li => {
+        li.addEventListener("click", () => loadRecord(li.dataset.id));
+      });
+    }
+
+    async function loadRecord(recordId) {
+      showError("");
+      selectedRecordId = recordId;
+      renderRecords();
+      try {
+        const r = await fetch(`/records/${recordId}`);
+        const data = await r.json();
+        if (!r.ok) {
+          showError(data.error || `HTTP ${r.status}`);
+          contentText.value = "";
+          return;
+        }
+        contentText.value = (data.currentVersion && data.currentVersion.contentText) || "";
+      } catch (e) {
+        showError(e.message || "Request failed");
+        contentText.value = "";
+      }
+    }
+
+    async function saveNewVersion() {
+      showError("");
+      if (!selectedRecordId) {
+        showError("Select a record first");
+        return;
+      }
+      const ownerUserId = ownerInput.value.trim();
+      const content = contentText.value;
+      try {
+        const r = await fetch(`/records/${selectedRecordId}/versions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contentText: content, actorUserId: ownerUserId }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          showError(data.error || `HTTP ${r.status}`);
+          return;
+        }
+        await loadRecord(selectedRecordId);
+        await loadRecords();
+      } catch (e) {
+        showError(e.message || "Request failed");
+      }
+    }
+
+    loadBtn.addEventListener("click", loadRecords);
+    saveBtn.addEventListener("click", saveNewVersion);
+  </script>
+</body>
+</html>

@@ -1,0 +1,224 @@
+// Prisma schema (SQLite for dev; use prisma.config.ts for DATABASE_URL)
+
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum RecordStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum ChangeType {
+  ADDED
+  MODIFIED
+  REMOVED
+  SYSTEM
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String?
+  createdAt    DateTime @default(now())
+
+  records  Record[]
+  versions RecordVersion[] @relation("VersionEditor")
+  history  EditHistory[]
+  exhibits Exhibit[]
+  cases    Case[]
+  tags     Tag[]
+}
+
+model Record {
+  id               String       @id @default(uuid())
+  ownerUserId      String
+  createdAt        DateTime     @default(now()) // immutable by policy
+  status           RecordStatus @default(ACTIVE)
+  originalDeviceId String?
+
+  // Pointer to current version for fast reads (1:1 requires unique FK)
+  currentVersionId String?        @unique
+  currentVersion   RecordVersion? @relation("CurrentVersion", fields: [currentVersionId], references: [id])
+
+  caseId String?
+  case   Case?       @relation(fields: [caseId], references: [id])
+
+  owner         User               @relation(fields: [ownerUserId], references: [id])
+  versions      RecordVersion[]
+  attachments   Attachment[]
+  history       EditHistory[]
+  locationSnaps LocationSnapshot[]
+  shareLinks    ShareLink[]
+  exhibit       Exhibit?
+  tags          RecordTag[]
+
+  @@index([ownerUserId])
+  @@index([createdAt])
+  @@index([caseId])
+}
+
+model RecordVersion {
+  id            String   @id @default(cuid())
+  recordId      String
+  createdAt     DateTime @default(now())
+  versionNumber Int
+  isOriginal    Boolean  @default(false)
+
+  contentText   String
+  eventDateText String?
+
+  editedByUserId String?
+  editedBy       User?   @relation("VersionEditor", fields: [editedByUserId], references: [id])
+
+  record Record @relation(fields: [recordId], references: [id])
+
+  attachments   Attachment[]
+  locationSnaps LocationSnapshot[]
+
+  // Opposite side of Record.currentVersion
+  currentOf Record? @relation("CurrentVersion")
+
+  // Opposite side of EditHistory.version (named relation)
+  historyEntries EditHistory[] @relation("VersionHistory")
+
+  @@unique([recordId, versionNumber])
+  @@index([recordId, createdAt])
+}
+
+model Attachment {
+  id        String  @id @default(cuid())
+  recordId  String
+  versionId String?
+
+  uploadedAt DateTime @default(now())
+
+  fileType    String
+  storagePath String
+  fileHash    String
+  isActive    Boolean @default(true)
+
+  record  Record         @relation(fields: [recordId], references: [id])
+  version RecordVersion? @relation(fields: [versionId], references: [id])
+
+  @@index([recordId, uploadedAt])
+  @@index([fileHash])
+}
+
+model EditHistory {
+  id        String   @id @default(cuid())
+  recordId  String
+  versionId String?
+  createdAt DateTime @default(now())
+
+  changeType    ChangeType
+  changeSummary String
+
+  actorUserId String?
+  actor       User?   @relation(fields: [actorUserId], references: [id])
+
+  systemGenerated Boolean @default(false)
+
+  ipAddress  String?
+  userAgent  String?
+
+  record  Record         @relation(fields: [recordId], references: [id])
+  version RecordVersion? @relation("VersionHistory", fields: [versionId], references: [id])
+
+  @@index([recordId, createdAt])
+  @@index([actorUserId])
+}
+
+model LocationSnapshot {
+  id         String   @id @default(cuid())
+  recordId   String
+  versionId  String?
+  capturedAt DateTime @default(now())
+
+  latitude  Float
+  longitude Float
+  accuracyM Float?
+
+  record  Record         @relation(fields: [recordId], references: [id])
+  version RecordVersion? @relation(fields: [versionId], references: [id])
+
+  @@index([recordId, capturedAt])
+}
+
+model ShareLink {
+  id        String    @id @default(cuid())
+  recordId  String
+  createdAt DateTime  @default(now())
+  expiresAt DateTime?
+  revokedAt DateTime?
+
+  token String @unique
+
+  record Record @relation(fields: [recordId], references: [id])
+
+  @@index([recordId, createdAt])
+  @@index([expiresAt])
+}
+
+model Exhibit {
+  id          String   @id @default(cuid())
+  recordId    String   @unique
+  ownerUserId String
+  exhibitCode String
+  label       String?
+  createdAt   DateTime @default(now())
+
+  record Record @relation(fields: [recordId], references: [id])
+  owner  User   @relation(fields: [ownerUserId], references: [id])
+
+  @@unique([ownerUserId, exhibitCode])
+  @@index([ownerUserId, createdAt])
+}
+
+model Case {
+  id          String   @id @default(cuid())
+  ownerUserId String
+  name        String
+  description String?
+  caseNumber  String?
+  createdAt   DateTime @default(now())
+  isActive    Boolean  @default(true)
+
+  owner   User     @relation(fields: [ownerUserId], references: [id])
+  records Record[]
+
+  @@unique([ownerUserId, name])
+  @@index([ownerUserId, createdAt])
+}
+
+model Tag {
+  id          String   @id @default(cuid())
+  ownerUserId String
+  name        String
+  color       String   @default("#6c757d")
+  createdAt   DateTime @default(now())
+
+  owner   User        @relation(fields: [ownerUserId], references: [id])
+  records RecordTag[]
+
+  @@unique([ownerUserId, name])
+  @@index([ownerUserId])
+}
+
+model RecordTag {
+  id        String   @id @default(cuid())
+  recordId  String
+  tagId     String
+  createdAt DateTime @default(now())
+
+  record Record @relation(fields: [recordId], references: [id])
+  tag    Tag    @relation(fields: [tagId], references: [id])
+
+  @@unique([recordId, tagId])
+  @@index([recordId])
+  @@index([tagId])
+}

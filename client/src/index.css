@@ -1,0 +1,9 @@
+/* Minimal reset - App.css handles all styling */
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+#root {
+  width: 100%;
+}

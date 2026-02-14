@@ -1,0 +1,8 @@
+node_modules/
+client/node_modules/
+dist/
+client/dist/
+*.db
+*.db-journal
+.env
+uploads/
