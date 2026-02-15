@@ -1,5 +1,7 @@
 # Record App — Legal Evidence Management System
 
+This project is feature-complete and verified. Further work would be hardening, polish, and documentation — not core functionality.
+
 A full-stack application for collecting, organizing, and managing legal evidence with court-ready exhibit generation, chain of custody tracking, and file integrity verification.
 
 Built as a portfolio project demonstrating full-stack development, security best practices, and domain-specific legal technology.
